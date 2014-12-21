@@ -1,11 +1,11 @@
-use std::num::{Zero, One};
 use std::num;
+use traits::structure::BaseFloat;
 use structs::{Pnt3, Vec3, Mat4};
 
 /// A 3D orthographic projection stored without any matrix.
 ///
 /// Reading or modifying its individual properties is cheap but applying the transformation is costly.
-#[deriving(Eq, PartialEq, Encodable, Decodable, Clone, Show)]
+#[deriving(Eq, PartialEq, Encodable, Decodable, Clone, Show, Copy)]
 pub struct Ortho3<N> {
     width:  N,
     height: N,
@@ -16,17 +16,17 @@ pub struct Ortho3<N> {
 /// A 3D orthographic projection stored as a 4D matrix.
 ///
 /// Reading or modifying its individual properties is costly but applying the transformation is cheap.
-#[deriving(Eq, PartialEq, Encodable, Decodable, Clone, Show)]
+#[deriving(Eq, PartialEq, Encodable, Decodable, Clone, Show, Copy)]
 pub struct OrthoMat3<N> {
     mat: Mat4<N>
 }
 
-impl<N: FloatMath> Ortho3<N> {
+impl<N: BaseFloat> Ortho3<N> {
     /// Creates a new 3D orthographic projection.
     pub fn new(width: N, height: N, znear: N, zfar: N) -> Ortho3<N> {
-        assert!(!(zfar - znear).is_zero());
-        assert!(!width.is_zero());
-        assert!(!height.is_zero());
+        assert!(!::is_zero(&(zfar - znear)));
+        assert!(!::is_zero(&width));
+        assert!(!::is_zero(&height));
 
         Ortho3 {
             width:  width,
@@ -47,7 +47,7 @@ impl<N: FloatMath> Ortho3<N> {
     }
 }
 
-impl<N: FloatMath + Clone> Ortho3<N> {
+impl<N: BaseFloat + Clone> Ortho3<N> {
     /// The width of the view cuboid.
     #[inline]
     pub fn width(&self) -> N {
@@ -111,14 +111,14 @@ impl<N: FloatMath + Clone> Ortho3<N> {
     }
 }
 
-impl<N: FloatMath> OrthoMat3<N> {
+impl<N: BaseFloat> OrthoMat3<N> {
     /// Creates a new orthographic projection matrix from the width, heihgt, znear and zfar planes of the view cuboid.
     pub fn new(width: N, height: N, znear: N, zfar: N) -> OrthoMat3<N> {
-        assert!(!(zfar - znear).is_zero());
-        assert!(!width.is_zero());
-        assert!(!height.is_zero());
+        assert!(!::is_zero(&(zfar - znear)));
+        assert!(!::is_zero(&width));
+        assert!(!::is_zero(&height));
 
-        let mat: Mat4<N> = One::one();
+        let mat: Mat4<N> = ::one();
 
         let mut res = OrthoMat3 { mat: mat };
         res.set_width(width);
@@ -159,26 +159,26 @@ impl<N: FloatMath> OrthoMat3<N> {
     /// The near plane offset of the view cuboid.
     #[inline]
     pub fn znear(&self) -> N {
-        (self.mat.m34 + One::one()) / self.mat.m33
+        (self.mat.m34 + ::one()) / self.mat.m33
     }
 
     /// The far plane offset of the view cuboid.
     #[inline]
     pub fn zfar(&self) -> N {
-        (self.mat.m34 - One::one()) / self.mat.m33
+        (self.mat.m34 - ::one()) / self.mat.m33
     }
 
     /// Sets the width of the view cuboid.
     #[inline]
     pub fn set_width(&mut self, width: N) {
-        assert!(!width.is_zero());
+        assert!(!::is_zero(&width));
         self.mat.m11 = num::cast::<f64, N>(2.0).unwrap() / width;
     }
 
     /// Sets the height of the view cuboid.
     #[inline]
     pub fn set_height(&mut self, height: N) {
-        assert!(!height.is_zero());
+        assert!(!::is_zero(&height));
         self.mat.m22 = num::cast::<f64, N>(2.0).unwrap() / height;
     }
 
@@ -199,7 +199,7 @@ impl<N: FloatMath> OrthoMat3<N> {
     /// Sets the near and far plane offsets of the view cuboid.
     #[inline]
     pub fn set_znear_and_zfar(&mut self, znear: N, zfar: N) {
-        assert!(!(zfar - znear).is_zero());
+        assert!(!::is_zero(&(zfar - znear)));
         self.mat.m33 = -num::cast::<f64, N>(2.0).unwrap() / (zfar - znear);
         self.mat.m34 = -(zfar + znear) / (zfar - znear);
     }
@@ -225,7 +225,7 @@ impl<N: FloatMath> OrthoMat3<N> {
     }
 }
 
-impl<N: FloatMath + Clone> OrthoMat3<N> {
+impl<N: BaseFloat + Clone> OrthoMat3<N> {
     /// Returns the 4D matrix (using homogeneous coordinates) of this projection.
     #[inline]
     pub fn to_mat<'a>(&'a self) -> Mat4<N> {

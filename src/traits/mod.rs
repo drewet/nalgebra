@@ -1,16 +1,17 @@
 //! Mathematical traits.
 
-pub use self::geometry::{AbsoluteRotate, Cross, CrossMatrix, Dot, FromHomogeneous, Norm, Orig,
-                         Rotate, Rotation, RotationMatrix, RotationWithTranslation, ToHomogeneous,
-                         Transform, Transformation, Translate, Translation, UniformSphereSample};
+pub use traits::geometry::{AbsoluteRotate, Cross, CrossMatrix, Dot, FromHomogeneous, Norm, Orig,
+                           Rotate, Rotation, RotationMatrix, RotationWithTranslation, ToHomogeneous,
+                           Transform, Transformation, Translate, Translation, UniformSphereSample};
 
-pub use self::structure::{FloatVec, FloatVecExt, FloatPnt, FloatPntExt, Basis, Cast, Col, Dim,
-                          Indexable, Iterable, IterableMut, Mat, Row, AnyVec, VecExt, AnyPnt,
-                          PntExt, PntAsVec, VecAsPnt, ColSlice, RowSlice, Diag, Eye};
+pub use traits::structure::{FloatVec, FloatPnt, Basis, Cast, Col, Dim, Indexable, Iterable,
+                            IterableMut, Mat, SquareMat, Row, NumVec, NumPnt, PntAsVec, VecAsPnt,
+                            ColSlice, RowSlice, Diag, Eye, Shape, BaseFloat, BaseNum, Zero, One,
+                            Bounded};
 
-pub use self::operations::{Absolute, ApproxEq, Axpy, Cov, Det, Inv, LMul, Mean, Outer, PartialOrd,
-                           RMul, ScalarAdd, ScalarSub, ScalarMul, ScalarDiv, Transpose};
-pub use self::operations::{PartialOrdering, PartialLess, PartialEqual, PartialGreater, NotComparable};
+pub use traits::operations::{Absolute, ApproxEq, Axpy, Cov, Det, Inv, LMul, Mean, Outer, POrd,
+                             RMul, ScalarAdd, ScalarSub, ScalarMul, ScalarDiv, Transpose, EigenQR};
+pub use traits::operations::POrdering;
 
 pub mod geometry;
 pub mod structure;

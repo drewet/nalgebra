@@ -1,9 +1,52 @@
 //! Traits giving structural informations on linear algebra objects or the space they live in.
 
-use std::num::{Zero, Bounded};
+use std::f32;
+use std::f64;
+use std::num::{Int, Float, FloatMath};
 use std::slice::{Items, MutItems};
-use traits::operations::{RMul, LMul, ScalarAdd, ScalarSub, Axpy};
-use traits::geometry::{Dot, Norm, UniformSphereSample, Orig};
+use traits::operations::{RMul, LMul, Axpy, Transpose, Inv, Absolute};
+use traits::geometry::{Dot, Norm, Orig};
+
+/// Basic integral numeric trait.
+pub trait BaseNum: Copy + Zero + One + Add<Self, Self> + Sub<Self, Self> + Mul<Self, Self> +
+                   Div<Self, Self> + Rem<Self, Self> + Neg<Self> + PartialEq + Absolute<Self> +
+                   Axpy<Self> {
+}
+
+/// Basic floating-point number numeric trait.
+pub trait BaseFloat: FloatMath + BaseNum {
+    /// Archimedes' constant.
+    fn pi() -> Self;
+    /// 2.0 * pi.
+    fn two_pi() -> Self;
+    /// pi / 2.0.
+    fn frac_pi_2() -> Self;
+    /// pi / 3.0.
+    fn frac_pi_3() -> Self;
+    /// pi / 4.0.
+    fn frac_pi_4() -> Self;
+    /// pi / 6.0.
+    fn frac_pi_6() -> Self;
+    /// pi / 8.0.
+    fn frac_pi_8() -> Self;
+    /// 1.0 / pi.
+    fn frac_1_pi() -> Self;
+    /// 2.0 / pi.
+    fn frac_2_pi() -> Self;
+    /// 2.0 / sqrt(pi).
+    fn frac_2_sqrtpi() -> Self;
+
+    /// Euler's number.
+    fn e() -> Self;
+    /// log2(e).
+    fn log2_e() -> Self;
+    /// log10(e).
+    fn log10_e() -> Self;
+    /// ln(2.0).
+    fn ln_2() -> Self;
+    /// ln(10.0).
+    fn ln_10() -> Self;
+}
 
 /// Traits of objects which can be created from an object of type `T`.
 pub trait Cast<T> {
@@ -14,9 +57,19 @@ pub trait Cast<T> {
 /// Trait of matrices.
 ///
 /// A matrix has rows and columns and are able to multiply them.
-pub trait Mat<R, C> : Row<R> + Col<C> + RMul<R> + LMul<C> { }
+pub trait Mat<N, R, C>: Row<R> + Col<C> + RMul<R> + LMul<C> + Index<(uint, uint), N> { }
 
-impl<M: Row<R> + Col<C> + RMul<R> + LMul<C>, R, C> Mat<R, C> for M {
+impl<N, M, R, C> Mat<N, R, C> for M
+    where M: Row<R> + Col<C> + RMul<R> + LMul<C> + Index<(uint, uint), N> {
+}
+
+/// Trait implemented by square matrices.
+pub trait SquareMat<N, V>: Mat<N, V, V> + Mul<Self, Self> + Eye + Transpose + Diag<V> + Inv + Dim +
+                           One {
+}
+
+impl<N, V, M> SquareMat<N, V> for M
+    where M: Mat<N, V, V> + Mul<M, M> + Eye + Transpose + Diag<V> + Inv + Dim + One {
 }
 
 /// Trait for constructing the identity matrix
@@ -25,8 +78,29 @@ pub trait Eye {
     fn new_identity(dim: uint) -> Self;
 }
 
-// XXX: we keep ScalarAdd and ScalarSub here to avoid trait impl conflict (overriding) between the
-// different Add/Sub traits. This is _so_ unfortunate…
+/// Additive identity.
+pub trait Zero {
+    /// Returns the additive identity.
+    fn zero() -> Self;
+    /// Tests if `self` is exactly zero.
+    fn is_zero(&self) -> bool;
+}
+
+/// Multiplicative identity.
+pub trait One {
+    /// Returns the multiplicative identity.
+    fn one() -> Self;
+}
+
+/// Types that have maximum and minimum value.
+pub trait Bounded {
+    /// The minimum value.
+    #[inline]
+    fn min_value() -> Self;
+    /// The maximum value.
+    #[inline]
+    fn max_value() -> Self;
+}
 
 // FIXME: return an iterator instead
 /// Traits of objects which can form a basis (typically vectors).
@@ -36,6 +110,9 @@ pub trait Basis {
 
     /// Iterates through a basis of the subspace orthogonal to `self`.
     fn orthonormal_subspace_basis(&Self, |Self| -> bool);
+
+    /// Gets the ith element of the canonical basis.
+    fn canonical_basis_element(i: uint) -> Option<Self>;
 }
 
 /// Trait to access rows of a matrix or a vector.
@@ -96,34 +173,35 @@ pub trait Diag<V> {
     fn diag(&self) -> V;
 }
 
-// FIXME: this trait should not be on nalgebra.
-// however, it is needed because std::ops::Index is (strangely) to poor: it
-// does not have a function to set values.
-// Also, using Index with tuples crashes.
+/// The shape of an indexable object.
+pub trait Shape<I, Res>: Index<I, Res> {
+    /// Returns the shape of an indexable object.
+    fn shape(&self) -> I;
+}
+
 /// This is a workaround of current Rust limitations.
 ///
-/// It exists because the `Index` trait cannot be used to express write access.
-/// Thus, this is the same as the `Index` trait but without the syntactic sugar and with a method
+/// It exists because the `I` trait cannot be used to express write access.
+/// Thus, this is the same as the `I` trait but without the syntactic sugar and with a method
 /// to write to a specific index.
-pub trait Indexable<Index, Res> {
+pub trait Indexable<I, Res>: Shape<I, Res> + IndexMut<I, Res> {
+    #[deprecated = "use the Index `[]` overloaded operator instead"]
     /// Reads the `i`-th element of `self`.
-    fn at(&self, i: Index) -> Res;
+    fn at(&self, i: I) -> Res;
+    #[deprecated = "use the IndexMut `[]` overloaded operator instead"]
     /// Writes to the `i`-th element of `self`.
-    fn set(&mut self, i: Index, Res);
+    fn set(&mut self, i: I, Res);
     /// Swaps the `i`-th element of `self` with its `j`-th element.
-    fn swap(&mut self, i: Index, j: Index);
-
-    /// Returns the shape of the iterable range.
-    fn shape(&self) -> Index;
+    fn swap(&mut self, i: I, j: I);
 
     /// Reads the `i`-th element of `self`.
     ///
     /// `i` is not checked.
-    unsafe fn unsafe_at(&self, i: Index) -> Res;
+    unsafe fn unsafe_at(&self, i: I) -> Res;
     /// Writes to the `i`-th element of `self`.
     ///
     /// `i` is not checked.
-    unsafe fn unsafe_set(&mut self, i: Index, Res);
+    unsafe fn unsafe_set(&mut self, i: I, Res);
 }
 
 /// This is a workaround of current Rust limitations.
@@ -139,7 +217,7 @@ pub trait Iterable<N> {
 /// Traits of mutable objects which can be iterated through like a vector.
 pub trait IterableMut<N> {
     /// Gets a vector-like read-write iterator.
-    fn mut_iter<'l>(&'l mut self) -> MutItems<'l, N>;
+    fn iter_mut<'l>(&'l mut self) -> MutItems<'l, N>;
 }
 
 /*
@@ -156,35 +234,13 @@ pub trait VecAsPnt<P> {
 }
 
 /// Trait grouping most common operations on vectors.
-pub trait AnyVec<N>: Dim + Sub<Self, Self> + Add<Self, Self> + Neg<Self> + Zero + PartialEq + Mul<N, Self>
-                     + Div<N, Self> + Dot<N> + Axpy<N> {
+pub trait NumVec<N>: Dim + Sub<Self, Self> + Add<Self, Self> + Neg<Self> + Zero + PartialEq +
+                     Mul<N, Self> + Div<N, Self> + Dot<N> + Axpy<N> + Index<uint, N> {
 }
 
-/// Trait of vector with components implementing the `Float` trait.
-pub trait FloatVec<N: Float>: AnyVec<N> + Norm<N> {
+/// Trait of vector with components implementing the `BaseFloat` trait.
+pub trait FloatVec<N: BaseFloat>: NumVec<N> + Norm<N> + Basis {
 }
-
-/// Trait grouping uncommon, low-level and borderline (from the mathematical point of view)
-/// operations on vectors.
-pub trait VecExt<N>: AnyVec<N> + Indexable<uint, N> + Iterable<N> +
-                     UniformSphereSample + ScalarAdd<N> + ScalarSub<N> + Bounded
-{ }
-
-/// Trait grouping uncommon, low-level and borderline (from the mathematical point of view)
-/// operations on vectors.
-pub trait FloatVecExt<N: Float>: FloatVec<N> + VecExt<N> + Basis { }
-
-impl<N, V: Dim + Sub<V, V> + Add<V, V> + Neg<V> + Zero + PartialEq + Mul<N, V> + Div<N, V> + Dot<N> + Axpy<N>>
-AnyVec<N> for V { }
-
-impl<N: Float, V: AnyVec<N> + Norm<N>> FloatVec<N> for V { }
-
-impl<N,
-     V: AnyVec<N> + Indexable<uint, N> + Iterable<N> +
-        UniformSphereSample + ScalarAdd<N> + ScalarSub<N> + Bounded>
-VecExt<N> for V { }
-
-impl<N: Float, V: FloatVec<N> + VecExt<N> + Basis> FloatVecExt<N> for V { }
 
 /*
  * Pnt related traits.
@@ -206,40 +262,189 @@ pub trait PntAsVec<V> {
 /// Trait grouping most common operations on points.
 // XXX: the vector space element `V` should be an associated type. Though this would prevent V from
 // having bounds (they are not supported yet). So, for now, we will just use a type parameter.
-pub trait AnyPnt<N, V>:
-          PntAsVec<V> + Dim + Sub<Self, V> + Orig + Neg<Self> + PartialEq + Mul<N, Self> +
-          Div<N, Self> + Add<V, Self> { // FIXME: + Sub<V, Self>
+pub trait NumPnt<N, V>:
+          Copy + PntAsVec<V> + Dim + Sub<Self, V> + Orig + Neg<Self> + PartialEq + Mul<N, Self> +
+          Div<N, Self> + Add<V, Self> + Axpy<N> + Index<uint, N> { // FIXME: + Sub<V, Self>
 }
 
-/// Trait of points with components implementing the `Float` trait.
-pub trait FloatPnt<N: Float, V: Norm<N>>: AnyPnt<N, V> {
+/// Trait of points with components implementing the `BaseFloat` trait.
+pub trait FloatPnt<N: BaseFloat, V: Norm<N>>: NumPnt<N, V> {
     /// Computes the square distance between two points.
     #[inline]
-    fn sqdist(a: &Self, b: &Self) -> N {
-        Norm::sqnorm(&(*a - *b))
+    fn sqdist(&self, other: &Self) -> N {
+        (*self - *other).sqnorm()
     }
 
     /// Computes the distance between two points.
     #[inline]
-    fn dist(a: &Self, b: &Self) -> N {
-        Norm::norm(&(*a - *b))
+    fn dist(&self, other: &Self) -> N {
+        (*self - *other).norm()
     }
 }
 
-/// Trait grouping uncommon, low-level and borderline (from the mathematical point of view)
-/// operations on points.
-pub trait PntExt<N, V>: AnyPnt<N, V> + Indexable<uint, N> + Iterable<N> +
-                        ScalarAdd<N> + ScalarSub<N> + Bounded + Axpy<N>
-{ }
-
-/// Trait grouping uncommon, low-level and borderline (from the mathematical point of view)
-/// operations on points.
-pub trait FloatPntExt<N: Float, V: Norm<N>> : FloatPnt<N, V> + PntExt<N, V> { }
+/*
+ *
+ *
+ * Some implementations for builtin types.
+ *
+ *
+ */
 
 
-impl<N, V, P: PntAsVec<V> + Dim + Sub<P, V> + Add<V, P> + Orig + Neg<P> + PartialEq + Mul<N, P> + Div<N, P>>
-AnyPnt<N, V> for P { }
-impl<N: Float, V: Norm<N>, P: AnyPnt<N, V>> FloatPnt<N, V> for P { }
-impl<N, V, P: AnyPnt<N, V> + Indexable<uint, N> + Iterable<N> + ScalarAdd<N> + ScalarSub<N> + Bounded + Axpy<N>>
-PntExt<N, V> for P { }
-impl<N: Float, V: Norm<N>, P: FloatPnt<N, V> + PntExt<N, V>> FloatPntExt<N, V> for P { }
+
+// Zero and One
+macro_rules! impl_zero_one(
+    ($n: ty, $zero: expr, $one: expr) => {
+        impl Zero for $n {
+            #[inline]
+            fn zero() -> $n {
+                $zero
+            }
+
+            #[inline]
+            fn is_zero(&self) -> bool {
+                *self == $zero
+            }
+        }
+
+        impl One for $n {
+            fn one() -> $n {
+                $one
+            }
+        }
+    }
+);
+
+impl_zero_one!(f32, 0.0, 1.0);
+impl_zero_one!(f64, 0.0, 1.0);
+impl_zero_one!(i8, 0, 1);
+impl_zero_one!(i16, 0, 1);
+impl_zero_one!(i32, 0, 1);
+impl_zero_one!(i64, 0, 1);
+impl_zero_one!(int, 0, 1);
+impl_zero_one!(u8, 0, 1);
+impl_zero_one!(u16, 0, 1);
+impl_zero_one!(u32, 0, 1);
+impl_zero_one!(u64, 0, 1);
+impl_zero_one!(uint, 0, 1);
+
+
+// Bounded
+macro_rules! impl_bounded(
+    ($n: ty, $min: expr, $max: expr) => {
+        impl Bounded for $n {
+            #[inline]
+            fn min_value() -> $n {
+                $min
+            }
+
+            #[inline]
+            fn max_value() -> $n {
+                $max
+            }
+        }
+    }
+);
+
+impl_bounded!(f32, Float::min_value(), Float::max_value());
+impl_bounded!(f64, Float::min_value(), Float::max_value());
+impl_bounded!(i8, Int::min_value(), Int::max_value());
+impl_bounded!(i16, Int::min_value(), Int::max_value());
+impl_bounded!(i32, Int::min_value(), Int::max_value());
+impl_bounded!(i64, Int::min_value(), Int::max_value());
+impl_bounded!(int, Int::min_value(), Int::max_value());
+impl_bounded!(u8, Int::min_value(), Int::max_value());
+impl_bounded!(u16, Int::min_value(), Int::max_value());
+impl_bounded!(u32, Int::min_value(), Int::max_value());
+impl_bounded!(u64, Int::min_value(), Int::max_value());
+impl_bounded!(uint, Int::min_value(), Int::max_value());
+
+
+// BaseFloat
+macro_rules! impl_base_float(
+    ($n: ident) => {
+        impl BaseFloat for $n {
+            /// Archimedes' constant.
+            fn pi() -> $n {
+                $n::consts::PI
+            }
+
+            /// 2.0 * pi.
+            fn two_pi() -> $n {
+                $n::consts::PI_2
+            }
+
+            /// pi / 2.0.
+            fn frac_pi_2() -> $n {
+                $n::consts::FRAC_PI_2
+            }
+
+            /// pi / 3.0.
+            fn frac_pi_3() -> $n {
+                $n::consts::FRAC_PI_3
+            }
+
+            /// pi / 4.0.
+            fn frac_pi_4() -> $n {
+                $n::consts::FRAC_PI_4
+            }
+
+            /// pi / 6.0.
+            fn frac_pi_6() -> $n {
+                $n::consts::FRAC_PI_6
+            }
+
+            /// pi / 8.0.
+            fn frac_pi_8() -> $n {
+                $n::consts::FRAC_PI_8
+            }
+
+            /// 1.0 / pi.
+            fn frac_1_pi() -> $n {
+                $n::consts::FRAC_1_PI
+            }
+
+            /// 2.0 / pi.
+            fn frac_2_pi() -> $n {
+                $n::consts::FRAC_2_PI
+            }
+
+            /// 2.0 / sqrt(pi).
+            fn frac_2_sqrtpi() -> $n {
+                $n::consts::FRAC_2_SQRTPI
+            }
+
+
+            /// Euler's number.
+            fn e() -> $n {
+                $n::consts::E
+            }
+
+            /// log2(e).
+            fn log2_e() -> $n {
+                $n::consts::LOG2_E
+            }
+
+            /// log10(e).
+            fn log10_e() -> $n {
+                $n::consts::LOG10_E
+            }
+
+            /// ln(2.0).
+            fn ln_2() -> $n {
+                $n::consts::LN_2
+            }
+
+            /// ln(10.0).
+            fn ln_10() -> $n {
+                $n::consts::LN_10
+            }
+        }
+    }
+);
+
+impl BaseNum for f32 { }
+impl BaseNum for f64 { }
+
+impl_base_float!(f32);
+impl_base_float!(f64);

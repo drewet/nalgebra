@@ -52,24 +52,7 @@ an optimized set of tools for computer graphics and physics. Those features incl
 * Dynamically sized (square or rectangular) matrix: `DMat`.
 * A few methods for data analysis: `Cov`, `Mean`.
 * Almost one trait per functionality: useful for generic programming.
-* Operator overloading using the double trait dispatch
-  [trick](http://smallcultfollowing.com/babysteps/blog/2012/10/04/refining-traits-slash-impls/).
-  For example, the following works:
-
-```rust
-extern crate "nalgebra" as na;
-use na::{Vec3, Mat3};
-
-fn main() {
-    let v: Vec3<f64> = na::zero();
-    let m: Mat3<f64> = na::one();
-
-    let _ = m * v;      // matrix-vector multiplication.
-    let _ = v * m;      // vector-matrix multiplication.
-    let _ = m * m;      // matrix-matrix multiplication.
-    let _ = v * 2.0f64; // vector-scalar multiplication.
-}
-```
+* Operator overloading using multidispatch.
 
 ## Compilation
 You will need the last nightly build of the [rust compiler](http://www.rust-lang.org)
@@ -94,11 +77,11 @@ Feel free to add your project to this list if you happen to use **nalgebra**!
 */
 
 #![deny(non_camel_case_types)]
-#![deny(unnecessary_parens)]
-#![deny(non_uppercase_statics)]
-#![deny(unnecessary_qualification)]
-#![deny(unused_result)]
-#![warn(missing_doc)]
+#![deny(unused_parens)]
+#![deny(non_upper_case_globals)]
+#![deny(unused_qualifications)]
+#![deny(unused_results)]
+#![warn(missing_docs)]
 #![feature(macro_rules)]
 #![feature(globs)]
 #![doc(html_root_url = "http://nalgebra.org/doc")]
@@ -108,17 +91,16 @@ extern crate serialize;
 #[cfg(test)]
 extern crate test;
 
-use std::num::{Zero, One, FloatMath};
 use std::cmp;
-pub use traits::{PartialLess, PartialEqual, PartialGreater, NotComparable};
 pub use traits::{
     Absolute,
     AbsoluteRotate,
-    AnyVec,
-    AnyPnt,
     ApproxEq,
     Axpy,
     Basis,
+    BaseFloat,
+    BaseNum,
+    Bounded,
     Cast,
     Col,
     ColSlice, RowSlice,
@@ -129,11 +111,10 @@ pub use traits::{
     Diag,
     Dim,
     Dot,
+    EigenQR,
     Eye,
     FloatPnt,
-    FloatPntExt,
     FloatVec,
-    FloatVecExt,
     FromHomogeneous,
     Indexable,
     Inv,
@@ -143,24 +124,28 @@ pub use traits::{
     Mat,
     Mean,
     Norm,
+    NumPnt,
+    NumVec,
+    One,
     Orig,
     Outer,
-    PartialOrd,
-    PartialOrdering,
+    POrd,
+    POrdering,
     PntAsVec,
-    PntExt,
     RMul,
     Rotate, Rotation, RotationMatrix, RotationWithTranslation,
     Row,
     ScalarAdd, ScalarSub,
     ScalarMul, ScalarDiv,
+    Shape,
+    SquareMat,
     ToHomogeneous,
     Transform, Transformation,
     Translate, Translation,
     Transpose,
     UniformSphereSample,
     VecAsPnt,
-    VecExt
+    Zero
 };
 
 pub use structs::{
@@ -180,55 +165,20 @@ pub use structs::{
 
 pub use linalg::{
     qr,
-    eigen_qr,
     householder_matrix
 };
 
 mod structs;
 mod traits;
 mod linalg;
+mod macros;
 
 // mod lower_triangular;
 // mod chol;
 
-/*
- * Reexport everything.
- */
-/// Traits to work around the language limitations related to operator overloading.
-///
-/// The trait names are formed by:
-///
-/// * a type name (eg. Vec1, Vec2, Mat3, Mat4, etc.).
-/// * the name of a binary operation (eg. Mul, Div, Add, Sub, etc.). 
-/// * the word `Rhs`.
-///
-/// When implemented by the type `T`, the trait makes it possible to overload the binary operator
-/// between `T` and the type name given by the trait.
-///
-/// # Examples:
-///
-/// * `Vec3MulRhs` will allow the overload of the `*` operator between the implementor type and
-/// `Vec3`. The `Vec3` being the first argument of the multiplication.
-/// * `Mat4DivRhs` will allow the overload of the `/` operator between the implementor type and
-/// `Mat4`. The `Mat4` being the first argument of the division.
-pub mod overload {
-    pub use structs::{Vec1MulRhs, Vec2MulRhs, Vec3MulRhs, Vec4MulRhs, Vec5MulRhs, Vec6MulRhs,
-                      Vec1DivRhs, Vec2DivRhs, Vec3DivRhs, Vec4DivRhs, Vec5DivRhs, Vec6DivRhs,
-                      Vec1AddRhs, Vec2AddRhs, Vec3AddRhs, Vec4AddRhs, Vec5AddRhs, Vec6AddRhs,
-                      Vec1SubRhs, Vec2SubRhs, Vec3SubRhs, Vec4SubRhs, Vec5SubRhs, Vec6SubRhs,
-                      Pnt1MulRhs, Pnt2MulRhs, Pnt3MulRhs, Pnt4MulRhs, Pnt5MulRhs, Pnt6MulRhs,
-                      Pnt1DivRhs, Pnt2DivRhs, Pnt3DivRhs, Pnt4DivRhs, Pnt5DivRhs, Pnt6DivRhs,
-                      Pnt1AddRhs, Pnt2AddRhs, Pnt3AddRhs, Pnt4AddRhs, Pnt5AddRhs, Pnt6AddRhs,
-                      Pnt1SubRhs, Pnt2SubRhs, Pnt3SubRhs, Pnt4SubRhs, Pnt5SubRhs, Pnt6SubRhs,
-                      Mat1MulRhs, Mat2MulRhs, Mat3MulRhs, Mat4MulRhs, Mat5MulRhs, Mat6MulRhs,
-                      Mat1DivRhs, Mat2DivRhs, Mat3DivRhs, Mat4DivRhs, Mat5DivRhs, Mat6DivRhs,
-                      Mat1AddRhs, Mat2AddRhs, Mat3AddRhs, Mat4AddRhs, Mat5AddRhs, Mat6AddRhs,
-                      Mat1SubRhs, Mat2SubRhs, Mat3SubRhs, Mat4SubRhs, Mat5SubRhs, Mat6SubRhs};
-}
-
 /// Change the input value to ensure it is on the range `[min, max]`.
 #[inline(always)]
-pub fn clamp<T: cmp::PartialOrd>(val: T, min: T, max: T) -> T {
+pub fn clamp<T: PartialOrd>(val: T, min: T, max: T) -> T {
     if val > min {
         if val < max {
             val
@@ -256,63 +206,63 @@ pub fn min<T: Ord>(a: T, b: T) -> T {
 
 /// Returns the infimum of `a` and `b`.
 #[inline(always)]
-pub fn inf<T: PartialOrd>(a: &T, b: &T) -> T {
-    PartialOrd::inf(a, b)
+pub fn inf<T: POrd>(a: &T, b: &T) -> T {
+    POrd::inf(a, b)
 }
 
 /// Returns the supremum of `a` and `b`.
 #[inline(always)]
-pub fn sup<T: PartialOrd>(a: &T, b: &T) -> T {
-    PartialOrd::sup(a, b)
+pub fn sup<T: POrd>(a: &T, b: &T) -> T {
+    POrd::sup(a, b)
 }
 
 /// Compare `a` and `b` using a partial ordering relation.
 #[inline(always)]
-pub fn partial_cmp<T: PartialOrd>(a: &T, b: &T) -> PartialOrdering {
-    PartialOrd::partial_cmp(a, b)
+pub fn partial_cmp<T: POrd>(a: &T, b: &T) -> POrdering {
+    POrd::partial_cmp(a, b)
 }
 
 /// Returns `true` iff `a` and `b` are comparable and `a < b`.
 #[inline(always)]
-pub fn partial_lt<T: PartialOrd>(a: &T, b: &T) -> bool {
-    PartialOrd::partial_lt(a, b)
+pub fn partial_lt<T: POrd>(a: &T, b: &T) -> bool {
+    POrd::partial_lt(a, b)
 }
 
 /// Returns `true` iff `a` and `b` are comparable and `a <= b`.
 #[inline(always)]
-pub fn partial_le<T: PartialOrd>(a: &T, b: &T) -> bool {
-    PartialOrd::partial_le(a, b)
+pub fn partial_le<T: POrd>(a: &T, b: &T) -> bool {
+    POrd::partial_le(a, b)
 }
 
 /// Returns `true` iff `a` and `b` are comparable and `a > b`.
 #[inline(always)]
-pub fn partial_gt<T: PartialOrd>(a: &T, b: &T) -> bool {
-    PartialOrd::partial_gt(a, b)
+pub fn partial_gt<T: POrd>(a: &T, b: &T) -> bool {
+    POrd::partial_gt(a, b)
 }
 
 /// Returns `true` iff `a` and `b` are comparable and `a >= b`.
 #[inline(always)]
-pub fn partial_ge<T: PartialOrd>(a: &T, b: &T) -> bool {
-    PartialOrd::partial_ge(a, b)
+pub fn partial_ge<T: POrd>(a: &T, b: &T) -> bool {
+    POrd::partial_ge(a, b)
 }
 
 /// Return the minimum of `a` and `b` if they are comparable.
 #[inline(always)]
-pub fn partial_min<'a, T: PartialOrd>(a: &'a T, b: &'a T) -> Option<&'a T> {
-    PartialOrd::partial_min(a, b)
+pub fn partial_min<'a, T: POrd>(a: &'a T, b: &'a T) -> Option<&'a T> {
+    POrd::partial_min(a, b)
 }
 
 /// Return the maximum of `a` and `b` if they are comparable.
 #[inline(always)]
-pub fn partial_max<'a, T: PartialOrd>(a: &'a T, b: &'a T) -> Option<&'a T> {
-    PartialOrd::partial_max(a, b)
+pub fn partial_max<'a, T: POrd>(a: &'a T, b: &'a T) -> Option<&'a T> {
+    POrd::partial_max(a, b)
 }
 
 /// Clamp `value` between `min` and `max`. Returns `None` if `value` is not comparable to
 /// `min` or `max`.
 #[inline(always)]
-pub fn partial_clamp<'a, T: PartialOrd>(value: &'a T, min: &'a T, max: &'a T) -> Option<&'a T> {
-    PartialOrd::partial_clamp(value, min, max)
+pub fn partial_clamp<'a, T: POrd>(value: &'a T, min: &'a T, max: &'a T) -> Option<&'a T> {
+    POrd::partial_clamp(value, min, max)
 }
 
 //
@@ -337,6 +287,12 @@ pub fn zero<T: Zero>() -> T {
     Zero::zero()
 }
 
+/// Tests is a value is iqual to zero.
+#[inline(always)]
+pub fn is_zero<T: Zero>(val: &T) -> bool {
+    val.is_zero()
+}
+
 /// Create a one-valued value.
 ///
 /// This is the same as `std::num::one()`.
@@ -359,7 +315,7 @@ pub fn orig<P: Orig>() -> P {
 
 /// Returns the center of two points.
 #[inline]
-pub fn center<N: Float, P: FloatPnt<N, V>, V>(a: &P, b: &P) -> P {
+pub fn center<N: BaseFloat, P: FloatPnt<N, V>, V: Copy>(a: &P, b: &P) -> P {
     let _2 = one::<N>() + one();
     (*a + *b.as_vec()) / _2
 }
@@ -369,14 +325,14 @@ pub fn center<N: Float, P: FloatPnt<N, V>, V>(a: &P, b: &P) -> P {
  */
 /// Returns the distance between two points.
 #[inline(always)]
-pub fn dist<N: Float, P: FloatPnt<N, V>, V: Norm<N>>(a: &P, b: &P) -> N {
-    FloatPnt::<N, V>::dist(a, b)
+pub fn dist<N: BaseFloat, P: FloatPnt<N, V>, V: Norm<N>>(a: &P, b: &P) -> N {
+    a.dist(b)
 }
 
 /// Returns the squared distance between two points.
 #[inline(always)]
-pub fn sqdist<N: Float, P: FloatPnt<N, V>, V: Norm<N>>(a: &P, b: &P) -> N {
-    FloatPnt::<N, V>::sqdist(a, b)
+pub fn sqdist<N: BaseFloat, P: FloatPnt<N, V>, V: Norm<N>>(a: &P, b: &P) -> N {
+    a.sqdist(b)
 }
 
 /*
@@ -385,7 +341,7 @@ pub fn sqdist<N: Float, P: FloatPnt<N, V>, V: Norm<N>>(a: &P, b: &P) -> N {
 /// Computes a projection matrix given the frustrum near plane width, height, the field of
 /// view, and the distance to the clipping planes (`znear` and `zfar`).
 #[deprecated = "Use `Persp3::new(width / height, fov, znear, zfar).as_mat()` instead"]
-pub fn perspective3d<N: FloatMath + Cast<f32> + Zero + One>(width: N, height: N, fov: N, znear: N, zfar: N) -> Mat4<N> {
+pub fn perspective3d<N: BaseFloat + Cast<f64> + Zero + One>(width: N, height: N, fov: N, znear: N, zfar: N) -> Mat4<N> {
     let aspect = width / height;
 
     let _1: N = one();
@@ -577,11 +533,10 @@ pub fn prepend_rotation<V, M: Rotation<V>>(m: &M, v: &V) -> M {
 ///
 /// ```rust
 /// extern crate "nalgebra" as na;
-/// use std::num::Float;
-/// use na::{Rot3, Vec3};
+/// use na::{BaseFloat, Rot3, Vec3};
 ///
 /// fn main() {
-///     let t  = Rot3::new(Vec3::new(0.0f64, 0.0, 0.5 * Float::pi()));
+///     let t  = Rot3::new(Vec3::new(0.0f64, 0.0, 0.5 * BaseFloat::pi()));
 ///     let v  = Vec3::new(1.0, 0.0, 0.0);
 ///
 ///     let tv = na::rotate(&t, &v);
@@ -599,11 +554,10 @@ pub fn rotate<V, M: Rotate<V>>(m: &M, v: &V) -> V {
 ///
 /// ```rust
 /// extern crate "nalgebra" as na;
-/// use std::num::Float;
-/// use na::{Rot3, Vec3};
+/// use na::{BaseFloat, Rot3, Vec3};
 ///
 /// fn main() {
-///     let t  = Rot3::new(Vec3::new(0.0f64, 0.0, 0.5 * Float::pi()));
+///     let t  = Rot3::new(Vec3::new(0.0f64, 0.0, 0.5 * BaseFloat::pi()));
 ///     let v  = Vec3::new(1.0, 0.0, 0.0);
 ///
 ///     let tv = na::inv_rotate(&t, &v);
@@ -647,7 +601,7 @@ pub fn append_rotation_wrt_center<LV: Neg<LV>,
 
 /// Builds a rotation matrix from `r`.
 #[inline(always)]
-pub fn to_rot_mat<LV, AV, M: Mat<LV, LV> + Rotation<AV>, R: RotationMatrix<LV, AV, M>>(r: &R) -> M {
+pub fn to_rot_mat<N, LV, AV, M: Mat<N, LV, LV> + Rotation<AV>, R: RotationMatrix<N, LV, AV, M>>(r: &R) -> M {
     r.to_rot_mat()
 }
 
@@ -715,19 +669,19 @@ pub fn dot<V: Dot<N>, N>(a: &V, b: &V) -> N {
 
 /// Computes the L2 norm of a vector.
 #[inline(always)]
-pub fn norm<V: Norm<N>, N: Float>(v: &V) -> N {
+pub fn norm<V: Norm<N>, N: BaseFloat>(v: &V) -> N {
     Norm::norm(v)
 }
 
 /// Computes the squared L2 norm of a vector.
 #[inline(always)]
-pub fn sqnorm<V: Norm<N>, N: Float>(v: &V) -> N {
+pub fn sqnorm<V: Norm<N>, N: BaseFloat>(v: &V) -> N {
     Norm::sqnorm(v)
 }
 
 /// Gets the normalized version of a vector.
 #[inline(always)]
-pub fn normalize<V: Norm<N>, N: Float>(v: &V) -> V {
+pub fn normalize<V: Norm<N>, N: BaseFloat>(v: &V) -> V {
     Norm::normalize_cpy(v)
 }
 
@@ -877,6 +831,15 @@ pub fn mean<N, M: Mean<N>>(observations: &M) -> N {
     Mean::mean(observations)
 }
 
+/*
+ * EigenQR<N, V>
+ */
+/// Computes the eigenvalues and eigenvectors of a square matrix usin the QR algorithm.
+#[inline(always)]
+pub fn eigen_qr<N, V, M: EigenQR<N, V>>(m: &M, eps: &N, niter: uint) -> (M, V) {
+    EigenQR::eigen_qr(m, eps, niter)
+}
+
 //
 //
 // Structure
@@ -908,6 +871,12 @@ pub fn orthonormal_subspace_basis<V: Basis>(v: &V, f: |V| -> bool) {
     Basis::orthonormal_subspace_basis(v, f)
 }
 
+/// Gets the (0-based) i-th element of the canonical basis of V.
+#[inline]
+pub fn canonical_basis_element<V: Basis>(i: uint) -> Option<V> {
+    Basis::canonical_basis_element(i)
+}
+
 /*
  * Row<R>
  */
@@ -934,6 +903,12 @@ pub fn diag<M: Diag<V>, V>(m: &M) -> V {
 #[inline(always)]
 pub fn dim<V: Dim>() -> uint {
     Dim::dim(None::<V>)
+}
+
+/// Gets the indexable range of an object.
+#[inline(always)]
+pub fn shape<V: Shape<I, N>, I, N>(v: &V) -> I {
+    v.shape()
 }
 
 /*

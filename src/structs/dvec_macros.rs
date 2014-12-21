@@ -1,25 +1,15 @@
 #![macro_escape]
 
 macro_rules! dvec_impl(
-    ($dvec: ident, $mul: ident, $div: ident, $add: ident, $sub: ident) => (
-        double_dispatch_binop_decl_trait!($dvec, $mul)
-        double_dispatch_binop_decl_trait!($dvec, $div)
-        double_dispatch_binop_decl_trait!($dvec, $add)
-        double_dispatch_binop_decl_trait!($dvec, $sub)
-
-        mul_redispatch_impl!($dvec, $mul)
-        div_redispatch_impl!($dvec, $div)
-        add_redispatch_impl!($dvec, $add)
-        sub_redispatch_impl!($dvec, $sub)
-
-        impl<N: Zero + Clone> $dvec<N> {
+    ($dvec: ident) => (
+        impl<N: Zero + Copy + Clone> $dvec<N> {
             /// Builds a vector filled with zeros.
             ///
             /// # Arguments
             /// * `dim` - The dimension of the vector.
             #[inline]
             pub fn new_zeros(dim: uint) -> $dvec<N> {
-                $dvec::from_elem(dim, Zero::zero())
+                $dvec::from_elem(dim, ::zero())
             }
 
             /// Tests if all components of the vector are zeroes.
@@ -40,11 +30,18 @@ macro_rules! dvec_impl(
             #[inline]
             pub fn as_mut_slice<'a>(&'a mut self) -> &'a mut [N] {
                 let len = self.len();
-                self.at.mut_slice_to(len)
+                self.at.slice_to_mut(len)
             }
         }
 
-        impl<N: Clone> Indexable<uint, N> for $dvec<N> {
+        impl<N> Shape<uint, N> for $dvec<N> {
+            #[inline]
+            fn shape(&self) -> uint {
+                self.len()
+            }
+        }
+
+        impl<N: Copy> Indexable<uint, N> for $dvec<N> {
             #[inline]
             fn at(&self, i: uint) -> N {
                 assert!(i < self.len());
@@ -69,18 +66,13 @@ macro_rules! dvec_impl(
             }
 
             #[inline]
-            fn shape(&self) -> uint {
-                self.len()
-            }
-
-            #[inline]
             unsafe fn unsafe_at(&self, i: uint) -> N {
-                (*self.at.as_slice().unsafe_get(i)).clone()
+                *self.at.as_slice().unsafe_get(i)
             }
 
             #[inline]
             unsafe fn unsafe_set(&mut self, i: uint, val: N) {
-                *self.at.as_mut_slice().unsafe_mut_ref(i) = val
+                *self.at.as_mut_slice().unsafe_mut(i) = val
             }
 
         }
@@ -97,14 +89,14 @@ macro_rules! dvec_impl(
             }
         }
 
-        impl<N: One + Zero + Clone> $dvec<N> {
+        impl<N: One + Zero + Copy + Clone> $dvec<N> {
             /// Builds a vector filled with ones.
             ///
             /// # Arguments
             /// * `dim` - The dimension of the vector.
             #[inline]
             pub fn new_ones(dim: uint) -> $dvec<N> {
-                $dvec::from_elem(dim, One::one())
+                $dvec::from_elem(dim, ::one())
             }
         }
 
@@ -125,12 +117,25 @@ macro_rules! dvec_impl(
 
         impl<N> IterableMut<N> for $dvec<N> {
             #[inline]
-            fn mut_iter<'l>(&'l mut self) -> MutItems<'l, N> {
-                self.as_mut_slice().mut_iter()
+            fn iter_mut<'l>(&'l mut self) -> MutItems<'l, N> {
+                self.as_mut_slice().iter_mut()
             }
         }
 
-        impl<N: Clone + Float + ApproxEq<N> + $mul<N, $dvec<N>>> $dvec<N> {
+        impl<N: Copy + Add<N, N> + Mul<N, N>> Axpy<N> for $dvec<N> {
+            fn axpy(&mut self, a: &N, x: &$dvec<N>) {
+                assert!(self.len() == x.len());
+
+                for i in range(0, x.len()) {
+                    unsafe {
+                        let self_i = self.unsafe_at(i);
+                        self.unsafe_set(i, self_i + *a * x.unsafe_at(i))
+                    }
+                }
+            }
+        }
+
+        impl<N: BaseFloat + ApproxEq<N>> $dvec<N> {
             /// Computes the canonical basis for the given dimension. A canonical basis is a set of
             /// vectors, mutually orthogonal, with all its component equal to 0.0 except one which is equal
             /// to 1.0.
@@ -140,7 +145,7 @@ macro_rules! dvec_impl(
                 for i in range(0u, dim) {
                     let mut basis_element : $dvec<N> = $dvec::new_zeros(dim);
 
-                    basis_element.set(i, One::one());
+                    basis_element.set(i, ::one());
 
                     res.push(basis_element);
                 }
@@ -159,7 +164,7 @@ macro_rules! dvec_impl(
                 for i in range(0u, dim) {
                     let mut basis_element : $dvec<N> = $dvec::new_zeros(self.len());
 
-                    basis_element.set(i, One::one());
+                    basis_element.set(i, ::one());
 
                     if res.len() == dim - 1 {
                         break;
@@ -167,13 +172,14 @@ macro_rules! dvec_impl(
 
                     let mut elt = basis_element.clone();
 
-                    elt = elt - self * Dot::dot(&basis_element, self);
+                    elt.axpy(&-::dot(&basis_element, self), self);
 
                     for v in res.iter() {
-                        elt = elt - v * Dot::dot(&elt, v)
+                        let proj = ::dot(&elt, v);
+                        elt.axpy(&-proj, v)
                     };
 
-                    if !ApproxEq::approx_eq(&Norm::sqnorm(&elt), &Zero::zero()) {
+                    if !ApproxEq::approx_eq(&Norm::sqnorm(&elt), &::zero()) {
                         res.push(Norm::normalize_cpy(&elt));
                     }
                 }
@@ -184,19 +190,63 @@ macro_rules! dvec_impl(
             }
         }
 
-        impl<N: Add<N, N> + Zero> $add<N, $dvec<N>> for $dvec<N> {
+        impl<N: Copy + Mul<N, N> + Zero> Mul<$dvec<N>, $dvec<N>> for $dvec<N> {
             #[inline]
-            fn binop(left: &$dvec<N>, right: &$dvec<N>) -> $dvec<N> {
-                assert!(left.len() == right.len());
-                FromIterator::from_iter(left.as_slice().iter().zip(right.as_slice().iter()).map(|(a, b)| *a + *b))
+            fn mul(self, right: $dvec<N>) -> $dvec<N> {
+                assert!(self.len() == right.len());
+
+                let mut res = self;
+
+                for (left, right) in res.as_mut_slice().iter_mut().zip(right.as_slice().iter()) {
+                    *left = *left * *right
+                }
+
+                res
             }
         }
 
-        impl<N: Sub<N, N> + Zero> $sub<N, $dvec<N>> for $dvec<N> {
+        impl<N: Copy + Div<N, N> + Zero> Div<$dvec<N>, $dvec<N>> for $dvec<N> {
             #[inline]
-            fn binop(left: &$dvec<N>, right: &$dvec<N>) -> $dvec<N> {
-                assert!(left.len() == right.len());
-                FromIterator::from_iter(left.as_slice().iter().zip(right.as_slice().iter()).map(|(a, b)| *a - *b))
+            fn div(self, right: $dvec<N>) -> $dvec<N> {
+                assert!(self.len() == right.len());
+
+                let mut res = self;
+
+                for (left, right) in res.as_mut_slice().iter_mut().zip(right.as_slice().iter()) {
+                    *left = *left / *right
+                }
+
+                res
+            }
+        }
+
+        impl<N: Copy + Add<N, N> + Zero> Add<$dvec<N>, $dvec<N>> for $dvec<N> {
+            #[inline]
+            fn add(self, right: $dvec<N>) -> $dvec<N> {
+                assert!(self.len() == right.len());
+
+                let mut res = self;
+
+                for (left, right) in res.as_mut_slice().iter_mut().zip(right.as_slice().iter()) {
+                    *left = *left + *right
+                }
+
+                res
+            }
+        }
+
+        impl<N: Copy + Sub<N, N> + Zero> Sub<$dvec<N>, $dvec<N>> for $dvec<N> {
+            #[inline]
+            fn sub(self, right: $dvec<N>) -> $dvec<N> {
+                assert!(self.len() == right.len());
+
+                let mut res = self;
+
+                for (left, right) in res.as_mut_slice().iter_mut().zip(right.as_slice().iter()) {
+                    *left = *left - *right
+                }
+
+                res
             }
         }
 
@@ -207,38 +257,28 @@ macro_rules! dvec_impl(
             }
         }
 
-        impl<N: Num + Clone> Dot<N> for $dvec<N> {
+        impl<N: BaseNum> Dot<N> for $dvec<N> {
             #[inline]
-            fn dot(a: &$dvec<N>, b: &$dvec<N>) -> N {
-                assert!(a.len() == b.len());
-
-                let mut res: N = Zero::zero();
-
-                for i in range(0u, a.len()) {
-                    res = res + unsafe { a.unsafe_at(i) * b.unsafe_at(i) };
+            fn dot(&self, other: &$dvec<N>) -> N {
+                assert!(self.len() == other.len());
+                let mut res: N = ::zero();
+                for i in range(0u, self.len()) {
+                    res = res + unsafe { self.unsafe_at(i) * other.unsafe_at(i) };
                 }
-
                 res
             }
         }
 
-        impl<N: Float + Clone> Norm<N> for $dvec<N> {
+        impl<N: BaseFloat> Norm<N> for $dvec<N> {
             #[inline]
-            fn sqnorm(v: &$dvec<N>) -> N {
-                Dot::dot(v, v)
+            fn sqnorm(&self) -> N {
+                Dot::dot(self, self)
             }
 
             #[inline]
-            fn norm(v: &$dvec<N>) -> N {
-                Norm::sqnorm(v).sqrt()
-            }
-
-            #[inline]
-            fn normalize_cpy(v: &$dvec<N>) -> $dvec<N> {
-                let mut res : $dvec<N> = v.clone();
-
+            fn normalize_cpy(&self) -> $dvec<N> {
+                let mut res : $dvec<N> = self.clone();
                 let _ = res.normalize();
-
                 res
             }
 
@@ -246,7 +286,7 @@ macro_rules! dvec_impl(
             fn normalize(&mut self) -> N {
                 let l = Norm::norm(self);
 
-                for n in self.as_mut_slice().mut_iter() {
+                for n in self.as_mut_slice().iter_mut() {
                     *n = *n / l;
                 }
 
@@ -261,123 +301,71 @@ macro_rules! dvec_impl(
             }
 
             #[inline]
-            fn approx_eq(a: &$dvec<N>, b: &$dvec<N>) -> bool {
-                let mut zip = a.as_slice().iter().zip(b.as_slice().iter());
-
-                zip.all(|(a, b)| ApproxEq::approx_eq(a, b))
-            }
-
-            #[inline]
-            fn approx_eq_eps(a: &$dvec<N>, b: &$dvec<N>, epsilon: &N) -> bool {
-                let mut zip = a.as_slice().iter().zip(b.as_slice().iter());
-
+            fn approx_eq_eps(&self, other: &$dvec<N>, epsilon: &N) -> bool {
+                let zip = self.as_slice().iter().zip(other.as_slice().iter());
                 zip.all(|(a, b)| ApproxEq::approx_eq_eps(a, b, epsilon))
             }
         }
 
-        dvec_scalar_mul_impl!($dvec, f64, $mul)
-        dvec_scalar_mul_impl!($dvec, f32, $mul)
-        dvec_scalar_mul_impl!($dvec, u64, $mul)
-        dvec_scalar_mul_impl!($dvec, u32, $mul)
-        dvec_scalar_mul_impl!($dvec, u16, $mul)
-        dvec_scalar_mul_impl!($dvec, u8, $mul)
-        dvec_scalar_mul_impl!($dvec, i64, $mul)
-        dvec_scalar_mul_impl!($dvec, i32, $mul)
-        dvec_scalar_mul_impl!($dvec, i16, $mul)
-        dvec_scalar_mul_impl!($dvec, i8, $mul)
-        dvec_scalar_mul_impl!($dvec, uint, $mul)
-        dvec_scalar_mul_impl!($dvec, int, $mul)
-
-        dvec_scalar_div_impl!($dvec, f64, $div)
-        dvec_scalar_div_impl!($dvec, f32, $div)
-        dvec_scalar_div_impl!($dvec, u64, $div)
-        dvec_scalar_div_impl!($dvec, u32, $div)
-        dvec_scalar_div_impl!($dvec, u16, $div)
-        dvec_scalar_div_impl!($dvec, u8, $div)
-        dvec_scalar_div_impl!($dvec, i64, $div)
-        dvec_scalar_div_impl!($dvec, i32, $div)
-        dvec_scalar_div_impl!($dvec, i16, $div)
-        dvec_scalar_div_impl!($dvec, i8, $div)
-        dvec_scalar_div_impl!($dvec, uint, $div)
-        dvec_scalar_div_impl!($dvec, int, $div)
-
-        dvec_scalar_add_impl!($dvec, f64, $add)
-        dvec_scalar_add_impl!($dvec, f32, $add)
-        dvec_scalar_add_impl!($dvec, u64, $add)
-        dvec_scalar_add_impl!($dvec, u32, $add)
-        dvec_scalar_add_impl!($dvec, u16, $add)
-        dvec_scalar_add_impl!($dvec, u8, $add)
-        dvec_scalar_add_impl!($dvec, i64, $add)
-        dvec_scalar_add_impl!($dvec, i32, $add)
-        dvec_scalar_add_impl!($dvec, i16, $add)
-        dvec_scalar_add_impl!($dvec, i8, $add)
-        dvec_scalar_add_impl!($dvec, uint, $add)
-        dvec_scalar_add_impl!($dvec, int, $add)
-
-        dvec_scalar_sub_impl!($dvec, f64, $sub)
-        dvec_scalar_sub_impl!($dvec, f32, $sub)
-        dvec_scalar_sub_impl!($dvec, u64, $sub)
-        dvec_scalar_sub_impl!($dvec, u32, $sub)
-        dvec_scalar_sub_impl!($dvec, u16, $sub)
-        dvec_scalar_sub_impl!($dvec, u8, $sub)
-        dvec_scalar_sub_impl!($dvec, i64, $sub)
-        dvec_scalar_sub_impl!($dvec, i32, $sub)
-        dvec_scalar_sub_impl!($dvec, i16, $sub)
-        dvec_scalar_sub_impl!($dvec, i8, $sub)
-        dvec_scalar_sub_impl!($dvec, uint, $sub)
-        dvec_scalar_sub_impl!($dvec, int, $sub)
-    )
-)
-
-macro_rules! dvec_scalar_mul_impl (
-    ($dvec: ident, $n: ident, $mul: ident) => (
-        impl $mul<$n, $dvec<$n>> for $n {
+        impl<N: Copy + Mul<N, N> + Zero> Mul<N, $dvec<N>> for $dvec<N> {
             #[inline]
-            fn binop(left: &$dvec<$n>, right: &$n) -> $dvec<$n> {
-                FromIterator::from_iter(left.as_slice().iter().map(|a| a * *right))
+            fn mul(self, right: N) -> $dvec<N> {
+                let mut res = self;
+
+                for e in res.as_mut_slice().iter_mut() {
+                    *e = *e * right
+                }
+
+                res
+            }
+        }
+
+        impl<N: Copy + Div<N, N> + Zero> Div<N, $dvec<N>> for $dvec<N> {
+            #[inline]
+            fn div(self, right: N) -> $dvec<N> {
+                let mut res = self;
+
+                for e in res.as_mut_slice().iter_mut() {
+                    *e = *e / right
+                }
+
+                res
+            }
+        }
+
+        impl<N: Copy + Add<N, N> + Zero> Add<N, $dvec<N>> for $dvec<N> {
+            #[inline]
+            fn add(self, right: N) -> $dvec<N> {
+                let mut res = self;
+
+                for e in res.as_mut_slice().iter_mut() {
+                    *e = *e + right
+                }
+
+                res
+            }
+        }
+
+        impl<N: Copy + Sub<N, N> + Zero> Sub<N, $dvec<N>> for $dvec<N> {
+            #[inline]
+            fn sub(self, right: N) -> $dvec<N> {
+                let mut res = self;
+
+                for e in res.as_mut_slice().iter_mut() {
+                    *e = *e - right
+                }
+
+                res
             }
         }
     )
-)
-
-macro_rules! dvec_scalar_div_impl (
-    ($dvec: ident, $n: ident, $div: ident) => (
-        impl $div<$n, $dvec<$n>> for $n {
-            #[inline]
-            fn binop(left: &$dvec<$n>, right: &$n) -> $dvec<$n> {
-                FromIterator::from_iter(left.as_slice().iter().map(|a| a / *right))
-            }
-        }
-    )
-)
-
-macro_rules! dvec_scalar_add_impl (
-    ($dvec: ident, $n: ident, $add: ident) => (
-        impl $add<$n, $dvec<$n>> for $n {
-            #[inline]
-            fn binop(left: &$dvec<$n>, right: &$n) -> $dvec<$n> {
-                FromIterator::from_iter(left.as_slice().iter().map(|a| a + *right))
-            }
-        }
-    )
-)
-
-macro_rules! dvec_scalar_sub_impl (
-    ($dvec: ident, $n: ident, $sub: ident) => (
-        impl $sub<$n, $dvec<$n>> for $n {
-            #[inline]
-            fn binop(left: &$dvec<$n>, right: &$n) -> $dvec<$n> {
-                FromIterator::from_iter(left.as_slice().iter().map(|a| a - *right))
-            }
-        }
-    )
-)
+);
 
 macro_rules! small_dvec_impl (
-    ($dvec: ident, $dim: expr, $mul: ident, $div: ident, $add: ident, $sub: ident $(,$idx: expr)*) => (
-        impl<N> Collection for $dvec<N> {
+    ($dvec: ident, $dim: expr $(,$idx: expr)*) => (
+        impl<N> $dvec<N> {
             #[inline]
-            fn len(&self) -> uint {
+            pub fn len(&self) -> uint {
                 self.dim
             }
         }
@@ -410,13 +398,13 @@ macro_rules! small_dvec_impl (
             }
         }
 
-        dvec_impl!($dvec, $mul, $div, $add, $sub)
+        dvec_impl!($dvec);
     )
-)
+);
 
 macro_rules! small_dvec_from_impl (
     ($dvec: ident, $dim: expr $(,$zeros: expr)*) => (
-        impl<N: Clone + Zero> $dvec<N> {
+        impl<N: Copy + Zero> $dvec<N> {
             /// Builds a vector filled with a constant.
             #[inline]
             pub fn from_elem(dim: uint, elem: N) -> $dvec<N> {
@@ -424,8 +412,8 @@ macro_rules! small_dvec_from_impl (
 
                 let mut at: [N, ..$dim] = [ $( $zeros, )* ];
 
-                for n in at.mut_slice_to(dim).mut_iter() {
-                    *n = elem.clone();
+                for n in at.slice_to_mut(dim).iter_mut() {
+                    *n = elem;
                 }
 
                 $dvec {
@@ -435,7 +423,7 @@ macro_rules! small_dvec_from_impl (
             }
         }
 
-        impl<N: Clone + Zero> $dvec<N> {
+        impl<N: Copy + Zero> $dvec<N> {
             /// Builds a vector filled with the components provided by a vector.
             ///
             /// The vector must have at least `dim` elements.
@@ -446,8 +434,8 @@ macro_rules! small_dvec_from_impl (
                 // FIXME: not safe.
                 let mut at: [N, ..$dim] = [ $( $zeros, )* ];
 
-                for (curr, other) in vec.iter().zip(at.mut_iter()) {
-                    *other = curr.clone();
+                for (curr, other) in vec.iter().zip(at.iter_mut()) {
+                    *other = *curr;
                 }
 
                 $dvec {
@@ -500,4 +488,4 @@ macro_rules! small_dvec_from_impl (
             }
         }
     )
-)
+);

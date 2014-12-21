@@ -1,15 +1,14 @@
 //! Vector with dimensions unknown at compile-time.
 
-#![allow(missing_doc)] // we hide doc to not have to document the $trhs double dispatch trait.
+#![allow(missing_docs)] // we hide doc to not have to document the $trhs double dispatch trait.
 
-use std::num::{Zero, One, Float};
 use std::rand::Rand;
 use std::rand;
 use std::slice::{Items, MutItems};
-use traits::operations::ApproxEq;
 use std::iter::FromIterator;
+use traits::operations::{ApproxEq, Axpy};
 use traits::geometry::{Dot, Norm};
-use traits::structure::{Iterable, IterableMut, Indexable};
+use traits::structure::{Iterable, IterableMut, Indexable, Shape, BaseFloat, BaseNum, Zero, One};
 
 /// Heap allocated, dynamically sized vector.
 #[deriving(Eq, PartialEq, Show, Clone)]
@@ -57,6 +56,11 @@ impl<N> DVec<N> {
     pub fn from_fn(dim: uint, f: |uint| -> N) -> DVec<N> {
         DVec { at: Vec::from_fn(dim, |i| f(i)) }
     }
+
+    #[inline]
+    pub fn len(&self) -> uint {
+        self.at.len()
+    }
 }
 
 impl<N> FromIterator<N> for DVec<N> {
@@ -73,14 +77,7 @@ impl<N> FromIterator<N> for DVec<N> {
 }
 
 
-impl<N> Collection for DVec<N> {
-    #[inline]
-    fn len(&self) -> uint {
-        self.at.len()
-    }
-}
-
-dvec_impl!(DVec, DVecMulRhs, DVecDivRhs, DVecAddRhs, DVecSubRhs)
+dvec_impl!(DVec);
 
 /// Stack-allocated, dynamically sized vector with a maximum size of 1.
 pub struct DVec1<N> {
@@ -88,8 +85,8 @@ pub struct DVec1<N> {
     dim: uint
 }
 
-small_dvec_impl!(DVec1, 1, DVec1MulRhs, DVec1DivRhs, DVec1AddRhs, DVec1SubRhs, 0)
-small_dvec_from_impl!(DVec1, 1, Zero::zero())
+small_dvec_impl!(DVec1, 1, 0);
+small_dvec_from_impl!(DVec1, 1, ::zero());
 
 
 /// Stack-allocated, dynamically sized vector with a maximum size of 2.
@@ -98,8 +95,8 @@ pub struct DVec2<N> {
     dim: uint
 }
 
-small_dvec_impl!(DVec2, 2, DVec2MulRhs, DVec2DivRhs, DVec2AddRhs, DVec2SubRhs, 0, 1)
-small_dvec_from_impl!(DVec2, 2, Zero::zero(), Zero::zero())
+small_dvec_impl!(DVec2, 2, 0, 1);
+small_dvec_from_impl!(DVec2, 2, ::zero(), ::zero());
 
 
 /// Stack-allocated, dynamically sized vector with a maximum size of 3.
@@ -108,8 +105,8 @@ pub struct DVec3<N> {
     dim: uint
 }
 
-small_dvec_impl!(DVec3, 3, DVec3MulRhs, DVec3DivRhs, DVec3AddRhs, DVec3SubRhs, 0, 1, 2)
-small_dvec_from_impl!(DVec3, 3, Zero::zero(), Zero::zero(), Zero::zero())
+small_dvec_impl!(DVec3, 3, 0, 1, 2);
+small_dvec_from_impl!(DVec3, 3, ::zero(), ::zero(), ::zero());
 
 
 /// Stack-allocated, dynamically sized vector with a maximum size of 4.
@@ -118,8 +115,8 @@ pub struct DVec4<N> {
     dim: uint
 }
 
-small_dvec_impl!(DVec4, 4, DVec4MulRhs, DVec4DivRhs, DVec4AddRhs, DVec4SubRhs, 0, 1, 2, 3)
-small_dvec_from_impl!(DVec4, 4, Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero())
+small_dvec_impl!(DVec4, 4, 0, 1, 2, 3);
+small_dvec_from_impl!(DVec4, 4, ::zero(), ::zero(), ::zero(), ::zero());
 
 
 /// Stack-allocated, dynamically sized vector with a maximum size of 5.
@@ -128,8 +125,8 @@ pub struct DVec5<N> {
     dim: uint
 }
 
-small_dvec_impl!(DVec5, 5, DVec5MulRhs, DVec5DivRhs, DVec5AddRhs, DVec5SubRhs, 0, 1, 2, 3, 4)
-small_dvec_from_impl!(DVec5, 5, Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero())
+small_dvec_impl!(DVec5, 5, 0, 1, 2, 3, 4);
+small_dvec_from_impl!(DVec5, 5, ::zero(), ::zero(), ::zero(), ::zero(), ::zero());
 
 
 /// Stack-allocated, dynamically sized vector with a maximum size of 6.
@@ -138,5 +135,5 @@ pub struct DVec6<N> {
     dim: uint
 }
 
-small_dvec_impl!(DVec6, 6, DVec6MulRhs, DVec6DivRhs, DVec6AddRhs, DVec6SubRhs, 0, 1, 2, 3, 4, 5)
-small_dvec_from_impl!(DVec6, 6, Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero(), Zero::zero())
+small_dvec_impl!(DVec6, 6, 0, 1, 2, 3, 4, 5);
+small_dvec_from_impl!(DVec6, 6, ::zero(), ::zero(), ::zero(), ::zero(), ::zero(), ::zero());

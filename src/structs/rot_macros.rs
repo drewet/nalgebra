@@ -9,105 +9,63 @@ macro_rules! submat_impl(
             }
         }
     )
-)
+);
 
 macro_rules! rotate_impl(
-    ($trhs: ident, $t: ident, $tv: ident, $tp: ident) => (
-        /*
-         * FIXME: we use the double dispatch trick here so that we can rotate vectors _and_
-         * points. Remove this as soon as rust supports multidispatch.
-         */
-        pub trait $trhs<N> {
-            fn rotate(left: &$t<N>, right: &Self) -> Self;
-            fn inv_rotate(left: &$t<N>, right: &Self) -> Self;
-        }
-
-        impl<N, V: $trhs<N>> Rotate<V> for $t<N> {
-            #[inline(always)]
-            fn rotate(&self, other: &V) -> V {
-                $trhs::rotate(self, other)
+    ($t: ident, $tv: ident, $tp: ident) => (
+        impl<N: BaseNum> Rotate<$tv<N>> for $t<N> {
+            #[inline]
+            fn rotate(&self, v: &$tv<N>) -> $tv<N> {
+                *self * *v
             }
 
-            #[inline(always)]
-            fn inv_rotate(&self, other: &V) -> V {
-                $trhs::inv_rotate(self, other)
+            #[inline]
+            fn inv_rotate(&self, v: &$tv<N>) -> $tv<N> {
+                *v * *self
             }
         }
 
-        impl<N: Num + Clone> $trhs<N> for $tv<N> {
+        impl<N: BaseNum> Rotate<$tp<N>> for $t<N> {
             #[inline]
-            fn rotate(t: &$t<N>, v: &$tv<N>) -> $tv<N> {
-                t * *v
+            fn rotate(&self, p: &$tp<N>) -> $tp<N> {
+                *self * *p
             }
 
             #[inline]
-            fn inv_rotate(t: &$t<N>, v: &$tv<N>) -> $tv<N> {
-                v * *t
-            }
-        }
-
-        impl<N: Num + Clone> $trhs<N> for $tp<N> {
-            #[inline]
-            fn rotate(t: &$t<N>, p: &$tp<N>) -> $tp<N> {
-                t * *p
-            }
-
-            #[inline]
-            fn inv_rotate(t: &$t<N>, p: &$tp<N>) -> $tp<N> {
-                p * *t
+            fn inv_rotate(&self, p: &$tp<N>) -> $tp<N> {
+                *p * *self
             }
         }
     )
-)
+);
 
 macro_rules! transform_impl(
-    ($trhs: ident, $t: ident, $tv: ident, $tp: ident) => (
-        /*
-         * FIXME: we use the double dispatch trick here so that we can transform vectors _and_
-         * points. Remove this as soon as rust supports multidispatch.
-         */
-        pub trait $trhs<N> {
-            fn transform(left: &$t<N>, right: &Self) -> Self;
-            fn inv_transform(left: &$t<N>, right: &Self) -> Self;
-        }
-
-        impl<N, V: $trhs<N>> Transform<V> for $t<N> {
-            #[inline(always)]
-            fn transform(&self, other: &V) -> V {
-                $trhs::transform(self, other)
+    ($t: ident, $tv: ident, $tp: ident) => (
+        impl<N: BaseNum> Transform<$tv<N>> for $t<N> {
+            #[inline]
+            fn transform(&self, v: &$tv<N>) -> $tv<N> {
+                self.rotate(v)
             }
 
-            #[inline(always)]
-            fn inv_transform(&self, other: &V) -> V {
-                $trhs::inv_transform(self, other)
+            #[inline]
+            fn inv_transform(&self, v: &$tv<N>) -> $tv<N> {
+                self.inv_rotate(v)
             }
         }
 
-        impl<N: Num + Clone> $trhs<N> for $tv<N> {
+        impl<N: BaseNum> Transform<$tp<N>> for $t<N> {
             #[inline]
-            fn transform(t: &$t<N>, v: &$tv<N>) -> $tv<N> {
-                t.rotate(v)
+            fn transform(&self, p: &$tp<N>) -> $tp<N> {
+                self.rotate(p)
             }
 
             #[inline]
-            fn inv_transform(t: &$t<N>, v: &$tv<N>) -> $tv<N> {
-                t.inv_rotate(v)
-            }
-        }
-
-        impl<N: Num + Clone> $trhs<N> for $tp<N> {
-            #[inline]
-            fn transform(t: &$t<N>, p: &$tp<N>) -> $tp<N> {
-                t.rotate(p)
-            }
-
-            #[inline]
-            fn inv_transform(t: &$t<N>, p: &$tp<N>) -> $tp<N> {
-                t.inv_rotate(p)
+            fn inv_transform(&self, p: &$tp<N>) -> $tp<N> {
+                self.inv_rotate(p)
             }
         }
     )
-)
+);
 
 macro_rules! dim_impl(
     ($t: ident, $dim: expr) => (
@@ -118,79 +76,78 @@ macro_rules! dim_impl(
             }
         }
     )
-)
+);
 
 macro_rules! rotation_matrix_impl(
     ($t: ident, $tlv: ident, $tav: ident) => (
-        impl<N: Cast<f32> + FloatMath + Clone>
-        RotationMatrix<$tlv<N>, $tav<N>, $t<N>> for $t<N> {
+        impl<N: Zero + BaseNum + Cast<f64> + BaseFloat> RotationMatrix<N, $tlv<N>, $tav<N>, $t<N>> for $t<N> {
             #[inline]
             fn to_rot_mat(&self) -> $t<N> {
                 self.clone()
             }
         }
     )
-)
+);
 
 macro_rules! one_impl(
     ($t: ident) => (
-        impl<N: Num + Clone> One for $t<N> {
+        impl<N: BaseNum> One for $t<N> {
             #[inline]
             fn one() -> $t<N> {
-                $t { submat: One::one() }
+                $t { submat: ::one() }
             }
         }
     )
-)
+);
 
 macro_rules! rot_mul_rot_impl(
-    ($t: ident, $mulrhs: ident) => (
-        impl<N: Num + Clone> $mulrhs<N, $t<N>> for $t<N> {
+    ($t: ident) => (
+        impl<N: BaseNum> Mul<$t<N>, $t<N>> for $t<N> {
             #[inline]
-            fn binop(left: &$t<N>, right: &$t<N>) -> $t<N> {
-                $t { submat: left.submat * right.submat }
+            fn mul(self, right: $t<N>) -> $t<N> {
+                $t { submat: self.submat * right.submat }
             }
         }
     )
-)
+);
 
 macro_rules! rot_mul_vec_impl(
-    ($t: ident, $tv: ident, $mulrhs: ident) => (
-        impl<N: Num + Clone> $mulrhs<N, $tv<N>> for $tv<N> {
+    ($t: ident, $tv: ident) => (
+        impl<N: BaseNum> Mul<$tv<N>, $tv<N>> for $t<N> {
             #[inline]
-            fn binop(left: &$t<N>, right: &$tv<N>) -> $tv<N> {
-                left.submat * *right
+            fn mul(self, right: $tv<N>) -> $tv<N> {
+                self.submat * right
             }
         }
     )
-)
+);
 
 macro_rules! rot_mul_pnt_impl(
-    ($t: ident, $tv: ident, $mulrhs: ident) => (
-        rot_mul_vec_impl!($t, $tv, $mulrhs)
+    ($t: ident, $tv: ident) => (
+        rot_mul_vec_impl!($t, $tv);
     )
-)
+);
 
 macro_rules! vec_mul_rot_impl(
-    ($t: ident, $tv: ident, $mulrhs: ident) => (
-        impl<N: Num + Clone> $mulrhs<N, $tv<N>> for $t<N> {
+    ($t: ident, $tv: ident) => (
+        impl<N: BaseNum> Mul<$t<N>, $tv<N>> for $tv<N> {
             #[inline]
-            fn binop(left: &$tv<N>, right: &$t<N>) -> $tv<N> {
-                *left * right.submat
+            fn mul(self, right: $t<N>) -> $tv<N> {
+                self * right.submat
             }
         }
     )
-)
+);
 
 macro_rules! pnt_mul_rot_impl(
-    ($t: ident, $tv: ident, $mulrhs: ident) => (
-        vec_mul_rot_impl!($t, $tv, $mulrhs)
+    ($t: ident, $tv: ident) => (
+        vec_mul_rot_impl!($t, $tv);
     )
-)
+);
 
 macro_rules! inv_impl(
     ($t: ident) => (
-        impl<N: Clone> Inv for $t<N> {
+        impl<N: Copy> Inv for $t<N> {
             #[inline]
             fn inv(&mut self) -> bool {
                 self.transpose();
@@ -200,20 +157,20 @@ macro_rules! inv_impl(
             }
 
             #[inline]
-            fn inv_cpy(m: &$t<N>) -> Option<$t<N>> {
+            fn inv_cpy(&self) -> Option<$t<N>> {
                 // always succeed
-                Some(Transpose::transpose_cpy(m))
+                Some(self.transpose_cpy())
             }
         }
     )
-)
+);
 
 macro_rules! transpose_impl(
     ($t: ident) => (
-        impl<N: Clone> Transpose for $t<N> {
+        impl<N: Copy> Transpose for $t<N> {
             #[inline]
-            fn transpose_cpy(m: &$t<N>) -> $t<N> {
-                $t { submat: Transpose::transpose_cpy(&m.submat) }
+            fn transpose_cpy(&self) -> $t<N> {
+                $t { submat: Transpose::transpose_cpy(&self.submat) }
             }
 
             #[inline]
@@ -222,11 +179,11 @@ macro_rules! transpose_impl(
             }
         }
     )
-)
+);
 
 macro_rules! row_impl(
     ($t: ident, $tv: ident) => (
-        impl<N: Clone + Zero> Row<$tv<N>> for $t<N> {
+        impl<N: Copy + Zero> Row<$tv<N>> for $t<N> {
             #[inline]
             fn nrows(&self) -> uint {
                 self.submat.nrows()
@@ -242,11 +199,11 @@ macro_rules! row_impl(
             }
         }
     )
-)
+);
 
 macro_rules! col_impl(
     ($t: ident, $tv: ident) => (
-        impl<N: Clone + Zero> Col<$tv<N>> for $t<N> {
+        impl<N: Copy + Zero> Col<$tv<N>> for $t<N> {
             #[inline]
             fn ncols(&self) -> uint {
                 self.submat.ncols()
@@ -262,34 +219,34 @@ macro_rules! col_impl(
             }
         }
     )
-)
+);
 
 macro_rules! index_impl(
-    ($t: ident, $tv: ident) => (
-        impl<N> Index<uint, $tv<N>> for $t<N> {
-            fn index(&self, i: &uint) -> &$tv<N> {
+    ($t: ident) => (
+        impl<N> Index<(uint, uint), N> for $t<N> {
+            fn index(&self, i: &(uint, uint)) -> &N {
                 &self.submat[*i]
             }
         }
 
-        impl<N> IndexMut<uint, $tv<N>> for $t<N> {
-            fn index_mut(&mut self, i: &uint) -> &mut $tv<N> {
+        impl<N> IndexMut<(uint, uint), N> for $t<N> {
+            fn index_mut(&mut self, i: &(uint, uint)) -> &mut N {
                 &mut self.submat[*i]
             }
         }
     )
-)
+);
 
 macro_rules! to_homogeneous_impl(
     ($t: ident, $tm: ident) => (
-        impl<N: Num + Clone> ToHomogeneous<$tm<N>> for $t<N> {
+        impl<N: BaseNum> ToHomogeneous<$tm<N>> for $t<N> {
             #[inline]
-            fn to_homogeneous(m: &$t<N>) -> $tm<N> {
-                ToHomogeneous::to_homogeneous(&m.submat)
+            fn to_homogeneous(&self) -> $tm<N> {
+                self.submat.to_homogeneous()
             }
         }
     )
-)
+);
 
 macro_rules! approx_eq_impl(
     ($t: ident) => (
@@ -300,25 +257,25 @@ macro_rules! approx_eq_impl(
             }
 
             #[inline]
-            fn approx_eq(a: &$t<N>, b: &$t<N>) -> bool {
-                ApproxEq::approx_eq(&a.submat, &b.submat)
+            fn approx_eq(&self, other: &$t<N>) -> bool {
+                ApproxEq::approx_eq(&self.submat, &other.submat)
             }
 
             #[inline]
-            fn approx_eq_eps(a: &$t<N>, b: &$t<N>, epsilon: &N) -> bool {
-                ApproxEq::approx_eq_eps(&a.submat, &b.submat, epsilon)
+            fn approx_eq_eps(&self, other: &$t<N>, epsilon: &N) -> bool {
+                ApproxEq::approx_eq_eps(&self.submat, &other.submat, epsilon)
             }
         }
     )
-)
+);
 
 macro_rules! absolute_impl(
     ($t: ident, $tm: ident) => (
-        impl<N: Signed> Absolute<$tm<N>> for $t<N> {
+        impl<N: Absolute<N>> Absolute<$tm<N>> for $t<N> {
             #[inline]
             fn abs(m: &$t<N>) -> $tm<N> {
                 Absolute::abs(&m.submat)
             }
         }
     )
-)
+);
